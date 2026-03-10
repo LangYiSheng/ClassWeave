@@ -20,9 +20,13 @@ export function buildShareUrl(shareToken) {
     return ''
   }
 
+  const basePath = import.meta.env.BASE_URL || '/'
+  const normalizedBasePath = basePath.endsWith('/') ? basePath.slice(0, -1) : basePath
+  const sharePath = `${normalizedBasePath}/share/${token}`.replace(/\/{2,}/g, '/')
+
   if (typeof window === 'undefined') {
-    return `/share/${token}`
+    return sharePath
   }
 
-  return `${window.location.origin}/share/${token}`
+  return `${window.location.origin}${sharePath}`
 }
