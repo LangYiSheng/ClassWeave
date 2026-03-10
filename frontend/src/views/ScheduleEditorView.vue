@@ -63,6 +63,13 @@ const deletePending = ref(false)
 const flashMessage = ref('')
 const errorMessage = ref('')
 
+function normalizeTimeSlots(slots) {
+  return slots.map((slot, index) => ({
+    ...slot,
+    periodIndex: index + 1,
+  }))
+}
+
 watch(detail, (value) => {
   if (!value) {
     return
@@ -77,7 +84,7 @@ watch(detail, (value) => {
     maxPeriodsPerDay: value.schedule.maxPeriodsPerDay,
     defaultColor: value.schedule.defaultColor || '#1F6FEB',
   })
-  timeSlots.value = value.timeSlots.map((slot) => ({ ...slot }))
+  timeSlots.value = normalizeTimeSlots(value.timeSlots.map((slot) => ({ ...slot })))
 }, { immediate: true })
 
 onMounted(async () => {
@@ -142,9 +149,30 @@ async function saveSlots() {
     return
   }
 
+  timeSlots.value = normalizeTimeSlots(timeSlots.value)
+
   await scheduleStore.saveScheduleTimeSlots(scheduleId.value, timeSlots.value, authStore.user.id)
   flashMessage.value = '节次时间已更新'
   showTimeSlotsModal.value = false
+}
+
+function addTimeSlot() {
+  const lastSlot = timeSlots.value[timeSlots.value.length - 1]
+
+  timeSlots.value = normalizeTimeSlots([
+    ...timeSlots.value,
+    {
+      periodIndex: timeSlots.value.length + 1,
+      startTime: lastSlot?.endTime || '08:00:00',
+      endTime: lastSlot?.endTime || '08:45:00',
+    },
+  ])
+}
+
+function removeTimeSlot(periodIndex) {
+  timeSlots.value = normalizeTimeSlots(
+    timeSlots.value.filter((slot) => slot.periodIndex !== periodIndex),
+  )
 }
 
 async function submitCourse() {
@@ -375,19 +403,22 @@ async function confirmRemoveSchedule() {
       <DialogModal
         v-if="showTimeSlotsModal"
         title="节次时间"
-        description="定义每天第几节对应的开始时间和结束时间。"
+        description="定义每天第几节对应的开始时间和结束时间。节次编号会自动保持为 1、2、3……"
         @close="showTimeSlotsModal = false"
       >
+        <div class="mb-4 flex justify-end">
+          <button class="btn-ghost" type="button" @click="addTimeSlot">新增节次</button>
+        </div>
         <div class="grid gap-3">
           <div
             v-for="slot in timeSlots"
             :key="slot.periodIndex"
-            class="grid gap-3 rounded-[22px] border border-ink/8 bg-white/72 p-4 md:grid-cols-[100px_1fr_1fr]"
+            class="grid gap-3 rounded-[22px] border border-ink/8 bg-white/72 p-4 md:grid-cols-[100px_1fr_1fr_auto]"
           >
-            <label class="field-label">
+            <div class="field-label">
               节次
-              <input v-model="slot.periodIndex" class="field-input" type="number">
-            </label>
+              <div class="field-input bg-white/65 font-semibold">{{ slot.periodIndex }}</div>
+            </div>
             <label class="field-label">
               开始时间
               <input v-model="slot.startTime" class="field-input" type="text">
@@ -396,6 +427,16 @@ async function confirmRemoveSchedule() {
               结束时间
               <input v-model="slot.endTime" class="field-input" type="text">
             </label>
+            <div class="flex items-end">
+              <button
+                class="btn-ghost px-4 py-3 text-xs"
+                type="button"
+                :disabled="timeSlots.length <= 1"
+                @click="removeTimeSlot(slot.periodIndex)"
+              >
+                删除
+              </button>
+            </div>
           </div>
         </div>
         <div class="mt-5 flex gap-3">
