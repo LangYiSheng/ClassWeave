@@ -9,6 +9,7 @@ import MetricCard from '@/components/MetricCard.vue'
 import PageHero from '@/components/PageHero.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useScheduleStore } from '@/stores/schedules'
+import { parseWakeUpSchedule } from '@/utils/wakeupImport'
 
 const route = useRoute()
 const router = useRouter()
@@ -36,8 +37,14 @@ const createForm = ref({
   defaultColor: '#1F6FEB',
 })
 const showImportModal = ref(false)
+const importMode = ref('json')
 const importPending = ref(false)
 const importError = ref('')
+const wakeUpDragging = ref(false)
+const wakeUpFile = ref(null)
+const wakeUpParsing = ref(false)
+const wakeUpError = ref('')
+const wakeUpParsed = ref(null)
 const importText = ref(`{
   "schedule": {
     "name": "AI 导入课表",
@@ -155,7 +162,9 @@ async function confirmRemoveSharedSchedule() {
 }
 
 function openImportModal() {
+  importMode.value = 'json'
   importError.value = ''
+  wakeUpError.value = ''
   showImportModal.value = true
 }
 
@@ -163,6 +172,101 @@ function closeImportModal() {
   showImportModal.value = false
   importPending.value = false
   importError.value = ''
+  wakeUpDragging.value = false
+  wakeUpParsing.value = false
+  wakeUpError.value = ''
+  wakeUpFile.value = null
+  wakeUpParsed.value = null
+}
+
+function formatFileSize(bytes = 0) {
+  if (!bytes) {
+    return '0 B'
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+function formatFileTime(value) {
+  if (!value) {
+    return '未知'
+  }
+
+  return new Date(value).toLocaleString('zh-CN', {
+    hour12: false,
+  })
+}
+
+async function updateWakeUpFile(file) {
+  if (!file) {
+    return
+  }
+
+  wakeUpFile.value = file
+  wakeUpDragging.value = false
+  wakeUpParsing.value = true
+  wakeUpError.value = ''
+  wakeUpParsed.value = null
+
+  try {
+    const content = await file.text()
+    wakeUpParsed.value = parseWakeUpSchedule(content)
+  } catch (error) {
+    wakeUpError.value = error.message || '无法解析这个 WakeUp 备份文件。'
+  } finally {
+    wakeUpParsing.value = false
+  }
+}
+
+function handleWakeUpFileChange(event) {
+  void updateWakeUpFile(event.target.files?.[0] || null)
+  event.target.value = ''
+}
+
+function handleWakeUpDrop(event) {
+  event.preventDefault()
+  void updateWakeUpFile(event.dataTransfer?.files?.[0] || null)
+}
+
+const wakeUpPreview = computed(() => {
+  if (!wakeUpFile.value) {
+    return null
+  }
+
+  return {
+    fileName: wakeUpFile.value.name,
+    fileSize: formatFileSize(wakeUpFile.value.size),
+    fileType: wakeUpFile.value.type || '未知类型',
+    updatedAt: formatFileTime(wakeUpFile.value.lastModified),
+  }
+})
+
+async function importWakeUpFile() {
+  if (!wakeUpParsed.value) {
+    wakeUpError.value = '请先选择并解析一个有效的 WakeUp 备份文件。'
+    return
+  }
+
+  wakeUpError.value = ''
+  importPending.value = true
+
+  try {
+    const resultScheduleId = await scheduleStore.importFromJson(wakeUpParsed.value.payload, authStore.user.id)
+    closeImportModal()
+    router.push({ name: 'schedule-edit', params: { scheduleId: resultScheduleId } })
+  } catch (error) {
+    wakeUpError.value = `导入失败：${error.message}`
+  } finally {
+    importPending.value = false
+  }
 }
 
 async function importJson() {
@@ -195,7 +299,7 @@ async function importJson() {
             创建新课表
           </button>
           <button class="btn-ghost" type="button" @click="openImportModal">
-            通过 JSON 导入新课表
+            导入课程表
           </button>
           <RouterLink class="btn-ghost" to="/board">去叠加查看</RouterLink>
         </template>
@@ -445,19 +549,155 @@ async function importJson() {
 
       <DialogModal
         v-if="showImportModal"
-        title="通过 JSON 导入新课表"
-        description="将完整课表结构粘贴到这里，一次创建整张课表。"
+        title="导入课程表"
+        description="你可以直接粘贴标准 JSON，也可以选择 WakeUp 课程表备份文件。"
+        :show-close-button="false"
         @close="closeImportModal"
       >
-        <textarea v-model="importText" class="field-input min-h-[460px] font-mono text-xs"></textarea>
-        <p v-if="importError" class="mt-4 rounded-[20px] bg-coral/10 px-4 py-3 text-sm text-coral">
-          {{ importError }}
-        </p>
-        <div class="mt-5 flex gap-3">
-          <button class="btn-primary" :disabled="importPending" type="button" @click="importJson">
-            {{ importPending ? '导入中...' : '开始导入' }}
+        <div class="mb-5 flex flex-wrap gap-2 rounded-[22px] bg-ink/5 p-1">
+          <button
+            class="rounded-full px-4 py-2 text-sm font-semibold transition"
+            :class="importMode === 'json' ? 'bg-white text-ink shadow-sm' : 'text-muted'"
+            type="button"
+            @click="importMode = 'json'"
+          >
+            通过 JSON 导入
           </button>
-          <button class="btn-ghost" :disabled="importPending" type="button" @click="closeImportModal">取消</button>
+          <button
+            class="rounded-full px-4 py-2 text-sm font-semibold transition"
+            :class="importMode === 'wakeup' ? 'bg-white text-ink shadow-sm' : 'text-muted'"
+            type="button"
+            @click="importMode = 'wakeup'"
+          >
+            通过 WakeUp 文件导入
+          </button>
+        </div>
+
+        <div v-if="importMode === 'json'">
+          <textarea v-model="importText" class="field-input min-h-[460px] font-mono text-xs"></textarea>
+          <p v-if="importError" class="mt-4 rounded-[20px] bg-coral/10 px-4 py-3 text-sm text-coral">
+            {{ importError }}
+          </p>
+          <div class="mt-5 flex gap-3">
+            <button class="btn-primary" :disabled="importPending" type="button" @click="importJson">
+              {{ importPending ? '导入中...' : '开始导入' }}
+            </button>
+            <button class="btn-ghost" :disabled="importPending" type="button" @click="closeImportModal">取消</button>
+          </div>
+        </div>
+
+        <div v-else>
+          <div class="mb-4 rounded-[22px] border border-ink/10 bg-white/72 px-5 py-4">
+            <div class="text-sm font-semibold text-ink">文件导出方法</div>
+            <p class="mt-2 text-sm leading-6 text-muted">
+              在 WakeUp 课程表 App 中点击顶部分享按钮，选择导出为备份，然后保存文件，再在此处上传文件。
+            </p>
+          </div>
+
+          <div
+            class="rounded-[24px] border-2 border-dashed px-6 py-10 text-center transition"
+            :class="wakeUpDragging ? 'border-blue bg-blue/8' : 'border-ink/12 bg-white/68'"
+            @dragenter.prevent="wakeUpDragging = true"
+            @dragover.prevent="wakeUpDragging = true"
+            @dragleave.prevent="wakeUpDragging = false"
+            @drop="handleWakeUpDrop"
+          >
+            <p class="font-heading text-2xl tracking-[-0.04em] text-ink">拖入 WakeUp 备份文件</p>
+            <p class="mt-3 text-sm leading-6 text-muted">
+              支持直接拖入文件，也可以点击下面的按钮手动选择。
+            </p>
+            <label class="btn-primary mt-5 cursor-pointer">
+              {{ wakeUpParsing ? '解析中...' : '选择备份文件' }}
+              <input class="hidden" type="file" @change="handleWakeUpFileChange">
+            </label>
+          </div>
+
+          <p v-if="wakeUpError" class="mt-4 rounded-[20px] bg-coral/10 px-4 py-3 text-sm text-coral">
+            {{ wakeUpError }}
+          </p>
+
+          <div class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <section class="rounded-[22px] border border-ink/10 bg-white/72 p-5">
+              <div class="text-sm font-semibold text-ink">已接收的文件</div>
+              <div v-if="wakeUpPreview" class="mt-4 grid gap-3 text-sm">
+                <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                  <div class="text-xs text-muted">文件名</div>
+                  <div class="mt-1 break-all font-semibold">{{ wakeUpPreview.fileName }}</div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">文件大小</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpPreview.fileSize }}</div>
+                  </div>
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">文件类型</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpPreview.fileType }}</div>
+                  </div>
+                </div>
+                <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                  <div class="text-xs text-muted">最后修改</div>
+                  <div class="mt-1 font-semibold">{{ wakeUpPreview.updatedAt }}</div>
+                </div>
+              </div>
+              <p v-else class="mt-4 text-sm leading-6 text-muted">
+                还没有选择文件。选好后，这里会显示文件的基础信息。
+              </p>
+            </section>
+
+            <section class="rounded-[22px] border border-ink/10 bg-white/72 p-5">
+              <div class="text-sm font-semibold text-ink">课程表信息预览</div>
+              <div v-if="wakeUpParsed" class="mt-4 grid gap-3 text-sm">
+                <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                  <div class="text-xs text-muted">课程表名称</div>
+                  <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.name }}</div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">学期标签</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.termLabel }}</div>
+                  </div>
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">课程数量</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.courseCount }}</div>
+                  </div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">学校</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.school }}</div>
+                  </div>
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">开学日期</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.startDate }}</div>
+                  </div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2">
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">总周数</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.totalWeeks }}</div>
+                  </div>
+                  <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                    <div class="text-xs text-muted">节次数量</div>
+                    <div class="mt-1 font-semibold">{{ wakeUpParsed.preview.timeSlotCount }}</div>
+                  </div>
+                </div>
+                <div class="rounded-2xl bg-[#fffaf2] px-4 py-3">
+                  <div class="text-xs text-muted">当前状态</div>
+                  <div class="mt-1 font-semibold">已完成格式转换，可以直接导入。</div>
+                </div>
+              </div>
+              <p v-else class="mt-4 text-sm leading-6 text-muted">
+                选中文件后，这里会展示从 WakeUp 备份里提取出的课程表信息。
+              </p>
+            </section>
+          </div>
+
+          <div class="mt-5 flex gap-3">
+            <button class="btn-primary" :disabled="importPending || wakeUpParsing || !wakeUpParsed" type="button" @click="importWakeUpFile">
+              {{ importPending ? '导入中...' : '导入这张课程表' }}
+            </button>
+            <button class="btn-ghost" type="button" @click="closeImportModal">关闭</button>
+          </div>
         </div>
       </DialogModal>
     </div>

@@ -8,6 +8,10 @@ defineProps({
     type: String,
     default: '',
   },
+  showCloseButton: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const emit = defineEmits(['close'])
@@ -22,7 +26,7 @@ const emit = defineEmits(['close'])
             <h3 class="font-heading text-3xl tracking-[-0.05em]">{{ title }}</h3>
             <p v-if="description" class="mt-2 text-sm leading-6 text-muted">{{ description }}</p>
           </div>
-          <button class="btn-ghost px-4 py-2 text-xs" type="button" @click="emit('close')">关闭</button>
+          <button v-if="showCloseButton" class="btn-ghost px-4 py-2 text-xs" type="button" @click="emit('close')">关闭</button>
         </div>
         <slot />
       </div>
