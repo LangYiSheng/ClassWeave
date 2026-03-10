@@ -1,14 +1,16 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 
 import AppShell from '@/components/AppShell.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import DialogModal from '@/components/DialogModal.vue'
 import MetricCard from '@/components/MetricCard.vue'
 import PageHero from '@/components/PageHero.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useScheduleStore } from '@/stores/schedules'
 
+const router = useRouter()
 const authStore = useAuthStore()
 const scheduleStore = useScheduleStore()
 
@@ -20,6 +22,39 @@ const sharedSchedules = computed(() =>
   scheduleStore.summaries.filter((schedule) => schedule.accessRole !== 'OWNER'),
 )
 
+const showImportModal = ref(false)
+const importPending = ref(false)
+const importError = ref('')
+const importText = ref(`{
+  "schedule": {
+    "name": "AI 导入课表",
+    "termLabel": "2026 春",
+    "description": "从结构化 JSON 导入",
+    "startDate": "2026-02-24",
+    "totalWeeks": 18,
+    "maxPeriodsPerDay": 12,
+    "defaultColor": "#1F6FEB"
+  },
+  "timeSlots": [
+    { "periodIndex": 1, "startTime": "08:00:00", "endTime": "08:45:00" },
+    { "periodIndex": 2, "startTime": "08:55:00", "endTime": "09:40:00" }
+  ],
+  "courses": [
+    {
+      "name": "软件工程",
+      "weekday": 3,
+      "startWeek": 1,
+      "endWeek": 16,
+      "startPeriod": 3,
+      "endPeriod": 4,
+      "weekType": "ALL",
+      "teacher": "陈老师",
+      "location": "A-302",
+      "note": "",
+      "isTemporary": false
+    }
+  ]
+}`)
 const sharedSchedulePendingDelete = ref(null)
 const deletePending = ref(false)
 
@@ -49,6 +84,33 @@ async function confirmRemoveSharedSchedule() {
     deletePending.value = false
   }
 }
+
+function openImportModal() {
+  importError.value = ''
+  showImportModal.value = true
+}
+
+function closeImportModal() {
+  showImportModal.value = false
+  importPending.value = false
+  importError.value = ''
+}
+
+async function importJson() {
+  importError.value = ''
+  importPending.value = true
+
+  try {
+    const parsed = JSON.parse(importText.value)
+    const resultScheduleId = await scheduleStore.importFromJson(parsed, authStore.user.id)
+    closeImportModal()
+    router.push({ name: 'schedule-edit', params: { scheduleId: resultScheduleId } })
+  } catch (error) {
+    importError.value = `导入失败：${error.message}`
+  } finally {
+    importPending.value = false
+  }
+}
 </script>
 
 <template>
@@ -63,12 +125,9 @@ async function confirmRemoveSharedSchedule() {
           <RouterLink class="btn-primary" :to="{ name: 'schedule-edit', params: { scheduleId: 'new' } }">
             创建新课表
           </RouterLink>
-          <RouterLink
-            class="btn-ghost"
-            :to="{ name: 'schedule-edit', params: { scheduleId: 'new' }, query: { mode: 'import' } }"
-          >
+          <button class="btn-ghost" type="button" @click="openImportModal">
             通过 JSON 导入新课表
-          </RouterLink>
+          </button>
           <RouterLink class="btn-ghost" to="/board">去叠加查看</RouterLink>
         </template>
 
@@ -238,6 +297,24 @@ async function confirmRemoveSharedSchedule() {
         @close="closeRemoveSharedScheduleDialog"
         @confirm="confirmRemoveSharedSchedule"
       />
+
+      <DialogModal
+        v-if="showImportModal"
+        title="通过 JSON 导入新课表"
+        description="将完整课表结构粘贴到这里，一次创建整张课表。"
+        @close="closeImportModal"
+      >
+        <textarea v-model="importText" class="field-input min-h-[460px] font-mono text-xs"></textarea>
+        <p v-if="importError" class="mt-4 rounded-[20px] bg-coral/10 px-4 py-3 text-sm text-coral">
+          {{ importError }}
+        </p>
+        <div class="mt-5 flex gap-3">
+          <button class="btn-primary" :disabled="importPending" type="button" @click="importJson">
+            {{ importPending ? '导入中...' : '开始导入' }}
+          </button>
+          <button class="btn-ghost" :disabled="importPending" type="button" @click="closeImportModal">取消</button>
+        </div>
+      </DialogModal>
     </div>
   </AppShell>
 </template>

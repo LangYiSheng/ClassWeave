@@ -49,44 +49,12 @@ const courseForm = ref({
   isTemporary: false,
 })
 
-const importText = ref(`{
-  "schedule": {
-    "name": "AI 导入课表",
-    "termLabel": "2026 春",
-    "description": "从结构化 JSON 导入",
-    "startDate": "2026-02-24",
-    "totalWeeks": 18,
-    "maxPeriodsPerDay": 12,
-    "defaultColor": "#1F6FEB"
-  },
-  "timeSlots": [
-    { "periodIndex": 1, "startTime": "08:00:00", "endTime": "08:45:00" },
-    { "periodIndex": 2, "startTime": "08:55:00", "endTime": "09:40:00" }
-  ],
-  "courses": [
-    {
-      "name": "软件工程",
-      "weekday": 3,
-      "startWeek": 1,
-      "endWeek": 16,
-      "startPeriod": 3,
-      "endPeriod": 4,
-      "weekType": "ALL",
-      "teacher": "陈老师",
-      "location": "A-302",
-      "note": "",
-      "isTemporary": false
-    }
-  ]
-}`)
-
 const detail = computed(() => scheduleStore.detailsById[scheduleId.value])
 const courses = computed(() => detail.value?.courses ?? [])
 const canManage = computed(() => isNew.value || detail.value?.schedule.accessRole === 'OWNER')
 
 const showBasicsModal = ref(false)
 const showTimeSlotsModal = ref(false)
-const showImportModal = ref(false)
 const showCourseModal = ref(false)
 const confirmDeleteScheduleOpen = ref(false)
 const confirmDeleteCourseOpen = ref(false)
@@ -118,8 +86,7 @@ onMounted(async () => {
   if (!isNew.value) {
     await scheduleStore.ensureDetailLoaded(scheduleId.value, authStore.user.id)
   } else {
-    showImportModal.value = route.query.mode === 'import'
-    showBasicsModal.value = route.query.mode !== 'import'
+    showBasicsModal.value = true
   }
 })
 
@@ -260,16 +227,6 @@ async function confirmRemoveSchedule() {
   }
 }
 
-async function importJson() {
-  try {
-    const parsed = JSON.parse(importText.value)
-    const resultScheduleId = await scheduleStore.importFromJson(parsed, authStore.user.id)
-    showImportModal.value = false
-    router.push({ name: 'schedule-edit', params: { scheduleId: resultScheduleId } })
-  } catch (error) {
-    errorMessage.value = `导入失败：${error.message}`
-  }
-}
 </script>
 
 <template>
@@ -278,7 +235,7 @@ async function importJson() {
       <PageHero
         eyebrow="课表详情"
         :title="isNew ? '新建一张课表' : form.name"
-        :description="isNew ? '先设置课表基本信息，或者直接导入一份完整的课程表。' : '在这里查看课程列表，并按需修改课表信息、节次设置或课程内容。'"
+        :description="isNew ? '先设置课表基本信息，再继续补充节次时间和课程。' : '在这里查看课程列表，并按需修改课表信息、节次设置或课程内容。'"
       />
 
       <p v-if="flashMessage" class="rounded-[20px] bg-teal/10 px-4 py-3 text-sm text-teal">
@@ -292,13 +249,10 @@ async function importJson() {
         <button v-if="canManage" class="btn-primary" type="button" @click="showBasicsModal = true">
           {{ isNew ? '设置课表信息' : '编辑课表信息' }}
         </button>
-        <button v-if="isNew" class="btn-ghost" type="button" @click="showImportModal = true">
-          通过 JSON 新建
-        </button>
-        <button v-if="!isNew && canManage" class="btn-ghost" type="button" @click="showTimeSlotsModal = true">
+        <button v-if="canManage" class="btn-ghost" type="button" @click="showTimeSlotsModal = true">
           设置节次时间
         </button>
-        <button v-if="!isNew && canManage" class="btn-ghost" type="button" @click="openCreateCourseModal">
+        <button v-if="canManage" class="btn-ghost" type="button" @click="openCreateCourseModal">
           添加课程
         </button>
         <button v-if="!isNew && canManage" class="btn-ghost" type="button" @click="requestRemoveSchedule">
@@ -342,7 +296,7 @@ async function importJson() {
           </div>
 
           <div v-else class="rounded-[22px] border border-dashed border-ink/15 bg-white/55 px-5 py-10 text-center text-sm text-muted">
-            {{ isNew ? '先设置课表信息或导入 JSON，随后再添加课程。' : '这张课表还没有课程，可以从上方直接添加第一门。' }}
+            {{ isNew ? '先保存课表信息，然后再继续设置节次时间和课程。' : '这张课表还没有课程，可以从上方直接添加第一门。' }}
           </div>
         </article>
       </section>
@@ -446,19 +400,6 @@ async function importJson() {
         <div class="mt-5 flex gap-3">
           <button class="btn-primary" type="button" @click="saveSlots">保存节次</button>
           <button class="btn-ghost" type="button" @click="showTimeSlotsModal = false">取消</button>
-        </div>
-      </DialogModal>
-
-      <DialogModal
-        v-if="showImportModal"
-        title="JSON 导入"
-        description="将完整课表结构粘贴到这里，一次创建整张课表。"
-        @close="showImportModal = false"
-      >
-        <textarea v-model="importText" class="field-input min-h-[460px] font-mono text-xs"></textarea>
-        <div class="mt-5 flex gap-3">
-          <button class="btn-primary" type="button" @click="importJson">开始导入</button>
-          <button class="btn-ghost" type="button" @click="showImportModal = false">取消</button>
         </div>
       </DialogModal>
 
