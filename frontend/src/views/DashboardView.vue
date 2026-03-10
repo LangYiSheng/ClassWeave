@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import AppShell from '@/components/AppShell.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -10,6 +10,7 @@ import PageHero from '@/components/PageHero.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useScheduleStore } from '@/stores/schedules'
 
+const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const scheduleStore = useScheduleStore()
@@ -22,6 +23,18 @@ const sharedSchedules = computed(() =>
   scheduleStore.summaries.filter((schedule) => schedule.accessRole !== 'OWNER'),
 )
 
+const showCreateModal = ref(false)
+const createPending = ref(false)
+const createError = ref('')
+const createForm = ref({
+  name: '新课表',
+  termLabel: '2026 春',
+  description: '新建一张课程表',
+  startDate: '2026-02-24',
+  totalWeeks: 18,
+  maxPeriodsPerDay: 12,
+  defaultColor: '#1F6FEB',
+})
 const showImportModal = ref(false)
 const importPending = ref(false)
 const importError = ref('')
@@ -60,7 +73,63 @@ const deletePending = ref(false)
 
 onMounted(async () => {
   await scheduleStore.hydrateForUser(authStore.user.id)
+
+  if (route.query.action === 'create') {
+    openCreateModal()
+    router.replace({ name: 'schedules' })
+  }
 })
+
+function resetCreateForm() {
+  createForm.value = {
+    name: '新课表',
+    termLabel: '2026 春',
+    description: '新建一张课程表',
+    startDate: '2026-02-24',
+    totalWeeks: 18,
+    maxPeriodsPerDay: 12,
+    defaultColor: '#1F6FEB',
+  }
+}
+
+function createRandomColor() {
+  return `#${Math.floor(Math.random() * 0xffffff)
+    .toString(16)
+    .padStart(6, '0')
+    .toUpperCase()}`
+}
+
+function openCreateModal() {
+  resetCreateForm()
+  createError.value = ''
+  showCreateModal.value = true
+}
+
+function closeCreateModal() {
+  showCreateModal.value = false
+  createPending.value = false
+  createError.value = ''
+  resetCreateForm()
+}
+
+function applyRandomCreateColor() {
+  createForm.value.defaultColor = createRandomColor()
+}
+
+async function submitCreateSchedule() {
+  createError.value = ''
+  createPending.value = true
+
+  try {
+    const resultScheduleId = await scheduleStore.saveSchedule('new', createForm.value, authStore.user.id)
+    closeCreateModal()
+    router.push({ name: 'schedule-edit', params: { scheduleId: resultScheduleId } })
+  } catch (error) {
+    createError.value = error.message || '创建课表失败，请稍后再试。'
+  } finally {
+    createPending.value = false
+  }
+}
 
 function requestRemoveSharedSchedule(schedule) {
   sharedSchedulePendingDelete.value = schedule
@@ -122,9 +191,9 @@ async function importJson() {
         description="在这里查看你创建的课表、别人分享给你的课表，并快速进入编辑、叠加查看或分享操作。"
       >
         <template #actions>
-          <RouterLink class="btn-primary" :to="{ name: 'schedule-edit', params: { scheduleId: 'new' } }">
+          <button class="btn-primary" type="button" @click="openCreateModal">
             创建新课表
-          </RouterLink>
+          </button>
           <button class="btn-ghost" type="button" @click="openImportModal">
             通过 JSON 导入新课表
           </button>
@@ -297,6 +366,82 @@ async function importJson() {
         @close="closeRemoveSharedScheduleDialog"
         @confirm="confirmRemoveSharedSchedule"
       />
+
+      <DialogModal
+        v-if="showCreateModal"
+        title="创建新课表"
+        description="先设置课表名称、学期信息和默认颜色，保存后再进入详情页继续编辑。"
+        @close="closeCreateModal"
+      >
+        <div class="grid gap-4 md:grid-cols-2">
+          <label class="field-label">
+            课表名称
+            <input v-model="createForm.name" class="field-input" type="text">
+          </label>
+          <label class="field-label">
+            学期标签
+            <input v-model="createForm.termLabel" class="field-input" type="text">
+          </label>
+          <label class="field-label md:col-span-2">
+            描述
+            <textarea v-model="createForm.description" class="field-input min-h-[110px]"></textarea>
+          </label>
+          <label class="field-label">
+            开学第一天
+            <input v-model="createForm.startDate" class="field-input" type="date">
+          </label>
+          <label class="field-label">
+            总周数
+            <input v-model="createForm.totalWeeks" class="field-input" type="number" min="1" max="30">
+          </label>
+          <label class="field-label">
+            每天最大节次
+            <input v-model="createForm.maxPeriodsPerDay" class="field-input" type="number" min="1" max="20">
+          </label>
+          <label class="field-label">
+            默认颜色
+            <div class="relative">
+              <span
+                class="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full border border-ink/10"
+                :style="{ backgroundColor: createForm.defaultColor || '#1F6FEB' }"
+              ></span>
+              <input
+                v-model="createForm.defaultColor"
+                class="field-input pl-10 pr-[120px]"
+                type="text"
+              >
+              <div class="absolute inset-y-0 right-2 flex items-center gap-2">
+                <button
+                  class="rounded-full bg-ink/5 px-3 py-1.5 text-[11px] font-semibold text-ink transition hover:bg-ink/10"
+                  type="button"
+                  @click="applyRandomCreateColor"
+                >
+                  随机
+                </button>
+                <label class="relative inline-flex cursor-pointer items-center justify-center rounded-full bg-ink/5 px-3 py-1.5 text-[11px] font-semibold text-ink transition hover:bg-ink/10">
+                  选色
+                  <input
+                    v-model="createForm.defaultColor"
+                    class="absolute inset-0 cursor-pointer opacity-0"
+                    type="color"
+                  >
+                </label>
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <p v-if="createError" class="mt-4 rounded-[20px] bg-coral/10 px-4 py-3 text-sm text-coral">
+          {{ createError }}
+        </p>
+
+        <div class="mt-5 flex gap-3">
+          <button class="btn-primary" :disabled="createPending" type="button" @click="submitCreateSchedule">
+            {{ createPending ? '创建中...' : '保存并继续编辑' }}
+          </button>
+          <button class="btn-ghost" :disabled="createPending" type="button" @click="closeCreateModal">取消</button>
+        </div>
+      </DialogModal>
 
       <DialogModal
         v-if="showImportModal"

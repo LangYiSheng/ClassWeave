@@ -41,7 +41,7 @@ function applyRandomColor(scheduleId) {
         <p class="section-tag">课程表仓库</p>
         <h3 class="font-heading text-3xl tracking-[-0.04em]">可叠加课表</h3>
       </div>
-      <RouterLink class="btn-ghost px-4 py-2 text-xs" :to="{ name: 'schedule-edit', params: { scheduleId: 'new' } }">
+      <RouterLink class="btn-ghost px-4 py-2 text-xs" :to="{ name: 'schedules', query: { action: 'create' } }">
         新建
       </RouterLink>
     </div>

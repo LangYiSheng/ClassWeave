@@ -81,13 +81,14 @@ watch(detail, (value) => {
 }, { immediate: true })
 
 onMounted(async () => {
+  if (isNew.value) {
+    router.replace({ name: 'schedules', query: { action: 'create' } })
+    return
+  }
+
   await scheduleStore.hydrateForUser(authStore.user.id)
 
-  if (!isNew.value) {
-    await scheduleStore.ensureDetailLoaded(scheduleId.value, authStore.user.id)
-  } else {
-    showBasicsModal.value = true
-  }
+  await scheduleStore.ensureDetailLoaded(scheduleId.value, authStore.user.id)
 })
 
 function resetCourseForm() {
