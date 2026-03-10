@@ -1,0 +1,25 @@
+.idea/
+
+# Root build output
+/frontendbuild/
+/backendbuild/
+
+# Backend
+/backend/.env
+/backend/target/
+
+# Frontend
+/frontend/.vscode/
+/frontend/node_modules/
+/frontend/.env.local
+
+# Common env files
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db

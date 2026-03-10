@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --cw-bg: #f3efe5;
+    --cw-paper: 255 250 242;
+    --cw-paper-strong: #fffaf2;
+    --cw-ink: 31 34 48;
+    --cw-muted: 104 109 127;
+    --cw-line: 31 34 48;
+    --cw-line-strong: 31 34 48;
+    --cw-blue: 31 111 235;
+    --cw-teal: 29 139 143;
+    --cw-coral: 223 93 67;
+    --cw-gold: 183 135 39;
+  }
+
+  html {
+    font-family: theme('fontFamily.body');
+    color: var(--cw-ink);
+    background: var(--cw-bg);
+  }
+
+  body {
+    @apply min-h-screen bg-shell bg-fixed text-ink;
+    margin: 0;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .font-heading {
+    @apply font-bold;
+  }
+
+  .glass-card {
+    @apply rounded-shell border border-white/60 bg-paper/80 shadow-glow backdrop-blur-xl;
+  }
+
+  .panel-card {
+    @apply glass-card p-5 lg:p-6;
+  }
+
+  .section-tag {
+    @apply mb-2 text-xs font-bold uppercase tracking-[0.14em] text-coral;
+  }
+
+  .field-label {
+    @apply grid gap-2 text-sm font-semibold text-ink;
+  }
+
+  .field-input {
+    @apply w-full rounded-2xl border border-ink/10 bg-white/85 px-4 py-3 text-sm text-ink outline-none transition focus:border-blue focus:ring-2 focus:ring-blue/15;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-gradient-to-br from-blue to-[#2d86ec] px-5 py-3 text-sm font-semibold text-white transition hover:-translate-y-0.5;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-full bg-ink/5 px-5 py-3 text-sm font-semibold text-ink transition hover:-translate-y-0.5;
+  }
+
+  .metric-card {
+    @apply rounded-3xl border border-ink/10 bg-white/65 p-4;
+  }
+}
