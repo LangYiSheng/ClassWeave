@@ -86,15 +86,21 @@ function parseWakeUpLines(text) {
 export function parseWakeUpSchedule(text) {
   const [tableMeta, rawTimeSlots, scheduleConfig, courseCatalog, rawCourseDetails] = parseWakeUpLines(text)
 
-  const selectedTimeTableId = scheduleConfig.timeTable
+  const availableTimeTableIds = [...new Set(rawTimeSlots.map((slot) => Number(slot.timeTable)).filter(Boolean))]
+  const selectedTimeTableId = availableTimeTableIds.includes(Number(scheduleConfig.timeTable))
+    ? Number(scheduleConfig.timeTable)
+    : availableTimeTableIds[0]
   const maxPeriodsPerDay = Number(scheduleConfig.nodes || tableMeta.courseLen || 12)
   const startDate = normalizeDate(scheduleConfig.startDate)
 
   const timeSlots = rawTimeSlots
     .filter((slot) =>
-      slot.timeTable === selectedTimeTableId &&
+      Number(slot.timeTable) === selectedTimeTableId &&
       Number(slot.node) <= maxPeriodsPerDay &&
-      !(String(slot.startTime) === '00:00' && String(slot.endTime) === '00:45'),
+      !(
+        String(slot.startTime || '') === '00:00' &&
+        (String(slot.endTime || '') === '00:00' || String(slot.endTime || '') === '00:45')
+      ),
     )
     .map((slot) => ({
       periodIndex: Number(slot.node),
@@ -102,6 +108,10 @@ export function parseWakeUpSchedule(text) {
       endTime: normalizeTime(slot.endTime),
     }))
     .sort((left, right) => left.periodIndex - right.periodIndex)
+
+  if (!timeSlots.length) {
+    throw new Error('没有识别到有效的节次时间。')
+  }
 
   const courseById = new Map(
     courseCatalog.map((course) => [
